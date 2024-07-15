@@ -1,0 +1,106 @@
+name: view_parse_network_ms # only used for demonstration data api
+#root_dir: '/home/runshengxu/project/OpenCOOD/opv2v_data_dumping/train'
+#validate_dir: '/home/runshengxu/project/OpenCOOD/opv2v_data_dumping/validate'
+root_dir: '/data/opv2v/train'
+validate_dir: '/data/opv2v/validate'
+
+
+train_params:
+  batch_size: &batch_size 4
+  epoches: &epoches 150
+  eval_freq: 5
+  save_freq: 5
+  max_cav: &max_cav 5
+
+
+fusion:
+  core_method: 'CamLateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  args: []
+
+
+data_augment: []
+add_data_extension: ['bev_dynamic.png', 'bev_static.png', 'bev_lane.png', 'bev_visibility.png', 'bev_visibility_corp.png']
+# preprocess-related
+preprocess:
+  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
+  core_method: 'RgbPreprocessor'
+  args:
+    bgr2rgb: true
+    resize_x: &image_width 512
+    resize_y: &image_height 512
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  # object evaluation range
+  cav_lidar_range: &cav_lidar [-50, -50, -3, 50, 50, 1]
+
+
+# anchor box related
+postprocess:
+  core_method: 'CameraBevPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
+  anchor_args:
+    cav_lidar_range: *cav_lidar
+  order: 'hwl' # hwl or lwh
+  max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
+  nms_thresh: 0.15
+
+model:
+  core_method: view_parse_network_ms
+  args:
+    encoder:
+      conv_input_dim: 768
+      conv_output_dim: 512
+      num_layers: 34
+      pretrained: true
+      image_width: *image_width
+      image_height: *image_height
+      fpn:
+        layer1: 128
+        layer2: 256
+        layer3: 512
+        output_dim: 256
+    vtm:
+      dim: 512
+      vpm:
+        dim: 4096
+        hidden_dim: 4096
+        dropout: 0.3
+        num_cam: 4
+        depth: 2
+      vam:
+        heads: 8
+        dim_head: 64
+        dropout: 0.3
+        depth: 2
+      feed_forward:
+        mlp_dim: 512
+        dropout: 0.3
+    decoder:
+      input_dim: 512
+      num_layer: 2
+      num_ch_dec: [64, 256]
+
+    seg_head_dim: 64
+    output_class: 2
+
+loss:
+  core_method: vanilla_seg_loss
+  args:
+    d_weights: 75.0
+    s_weights: 15.0
+    d_coe: 2.0
+    s_coe: 1.0
+
+optimizer:
+  core_method: AdamW
+  lr: 2e-4
+  args:
+    eps: 1e-10
+    weight_decay: 1e-2
+
+
+lr_scheduler:
+    core_method: cosineannealwarm #step, multistep, Exponential and cosineannealwarm support
+    epoches: *epoches
+    warmup_lr: 2e-4
+    warmup_epoches: 0
+    lr_min: 5e-6

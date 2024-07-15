@@ -1,0 +1,123 @@
+name: view_parse_network_v2v_fuse # only used for demonstration data api
+root_dir: '/home/runshengxu/project/OpenCOOD/opv2v_data_dumping/train'
+validate_dir: '/home/runshengxu/project/OpenCOOD/opv2v_data_dumping/validate'
+#root_dir: '/home/jiaqi2/data/opv2v/train'
+#validate_dir: '/home/jiaqi2/data/opv2v/validate'
+
+
+train_params:
+  batch_size: &batch_size 2
+  epoches: &epoches 150
+  eval_freq: 5
+  save_freq: 5
+  max_cav: &max_cav 5
+  visible: true
+
+fusion:
+  core_method: 'CamIntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  args: []
+
+
+data_augment: []
+add_data_extension: ['bev_dynamic.png', 'bev_static.png', 'bev_lane.png', 'bev_visibility.png', 'bev_visibility_corp.png']
+
+# preprocess-related
+preprocess:
+  # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
+  core_method: 'RgbPreprocessor'
+  args:
+    bgr2rgb: true
+    resize_x: &image_width 512
+    resize_y: &image_height 512
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  # object evaluation range
+  cav_lidar_range: &cav_lidar [-50, -50, -3, 50, 50, 1]
+
+
+# anchor box related
+postprocess:
+  core_method: 'CameraBevPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
+  anchor_args:
+    cav_lidar_range: *cav_lidar
+  order: 'hwl' # hwl or lwh
+  max_num: 100 # maximum number of objects in a single frame. use this number to make sure different frames has the same dimension in the same batch
+  nms_thresh: 0.15
+
+model:
+  core_method: view_parse_network_v2vnet
+  args:
+    target: &target 'static' # dynamic, static or both
+    max_cav: *max_cav
+    sttf: &sttf
+      resolution: 0.390625 # m/pixel
+      downsample_rate: 8
+      use_roi_mask: true
+    encoder:
+      num_layers: 34
+      pretrained: true
+      image_width: *image_width
+      image_height: *image_height
+      id_pick: 2
+    conv1x1:
+      input_dim: 256
+      output_dim: 128
+    vtm:
+      dim: 128
+      vpm:
+        dim: 1024
+        hidden_dim: 512
+        dropout: 0.1
+        num_cam: 4
+        depth: 1
+      vam:
+        heads: 4
+        dim_head: 32
+        dropout: 0.3
+        depth: 1
+      feed_forward:
+        mlp_dim: 128
+        dropout: 0.3
+    decoder:
+      input_dim: 128
+      num_layer: 3
+      num_ch_dec: [ 32, 64, 128 ]
+    v2vnet_fusion:
+      resolution: 0.390625 # m/pixel
+      downsample_rate: 8
+      num_iteration: 2
+      in_channels: 128
+      gru_flag: true
+      agg_operator: "avg" # max or avg
+      conv_gru:
+        H: 32
+        W: 32
+        num_layers: 1
+        kernel_size: [[3,3]]
+
+    seg_head_dim: 32
+    output_class: 3
+
+loss:
+  core_method: vanilla_seg_loss
+  args:
+    target: *target
+    d_weights: 75.0
+    s_weights: 2.0
+    l_weights: 4.0
+    d_coe: 2.0
+    s_coe: 1.0
+
+optimizer:
+  core_method: Adam
+  lr: 0.0002
+  args:
+    eps: 1e-10
+    weight_decay: 1e-4
+
+lr_scheduler:
+    core_method: cosineannealwarm #step, multistep, Exponential and cosineannealwarm support
+    epoches: *epoches
+    warmup_lr: 1e-5
+    warmup_epoches: 10
+    lr_min: 5e-6
