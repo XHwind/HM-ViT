@@ -11,6 +11,7 @@ This is the official implementation of ICCV 2023 paper "HM-ViT: Hetero-modal Veh
 ![teaser](imgs/hm-vit.png)
 
 ## Installation
+Please refer to [Bevformer](https://github.com/fundamentalvision/BEVFormer) to install dependancies for mmdetection, mmdet3d, and mmcv. 
 ```bash
 # Clone repo
 git clone https://github.com/XHwind/HM-ViT
